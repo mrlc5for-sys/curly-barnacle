@@ -1,0 +1,277 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Soulzy Engine</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&family=JetBrains+Mono&display=swap" rel="stylesheet">
+  <style>
+    :root { --bg: #080d18; --panel: #111a2e; --border: #1e2a44; --accent: #3b82f6; --text: #e6edf7; --muted: #94a3b8; --ok: #22c55e; --bad: #ef4444; }
+    * { box-sizing: border-box; font-family: 'Inter', sans-serif; margin: 0; padding: 0; }
+    body { background: var(--bg); color: var(--text); display: flex; height: 100vh; overflow: hidden; }
+    
+    #login-screen, #loading-screen { position: fixed; inset: 0; background: var(--bg); z-index: 999; display: flex; align-items: center; justify-content: center; }
+    #loading-screen { display: none; flex-direction: column; gap: 15px; }
+    .login-box { background: var(--panel); padding: 40px; border-radius: 12px; border: 1px solid var(--border); width: 300px; text-align: center; }
+    
+    .load-step { display: flex; align-items: center; gap: 10px; font-size: 14px; color: var(--muted); opacity: 0.3; transition: all 0.3s; }
+    .load-step.active { opacity: 1; color: var(--text); font-weight: 600; }
+    .load-step.done { opacity: 1; color: var(--ok); }
+    .spin { width: 16px; height: 16px; border: 2px solid var(--muted); border-top-color: var(--accent); border-radius: 50%; animation: spin 1s linear infinite; display: none; }
+    .load-step.active .spin { display: block; }
+    .load-step.done .spin { display: none; }
+    .load-step.done::before { content: '✓'; font-weight: bold; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    aside { width: 220px; border-right: 1px solid var(--border); padding: 20px; background: rgba(17,26,46,.4); }
+    h1 { font-size: 20px; margin-bottom: 20px; color: var(--accent); }
+    nav button { width: 100%; padding: 10px; background: transparent; border: none; color: var(--muted); text-align: left; cursor: pointer; font-size: 14px; font-weight: 600; border-radius: 6px; margin-bottom: 5px; }
+    nav button.active { background: var(--panel); color: var(--text); }
+    main { flex: 1; padding: 30px; overflow-y: auto; }
+    .stats { display: flex; gap: 15px; margin-bottom: 20px; }
+    .stat { background: var(--panel); padding: 15px; border-radius: 8px; border: 1px solid var(--border); flex: 1; }
+    .stat h2 { font-size: 24px; }
+    .stat p { font-size: 12px; color: var(--muted); }
+    .card { background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: 20px; margin-bottom: 20px; }
+    table { width: 100%; border-collapse: collapse; }
+    th { text-align: left; padding: 10px; color: var(--muted); font-size: 12px; border-bottom: 1px solid var(--border); }
+    td { padding: 10px; border-bottom: 1px solid var(--border); font-size: 14px; vertical-align: middle; }
+    .avatar { width: 30px; height: 30px; border-radius: 50%; background: #222; display: inline-block; vertical-align: middle; margin-right: 10px; }
+    .badge { padding: 4px 8px; border-radius: 4px; font-size: 11px; font-weight: bold; }
+    .badge.on { background: rgba(34,197,94,.2); color: var(--ok); }
+    .badge.off { background: rgba(239,68,68,.2); color: var(--bad); }
+    .badge.nitro { background: rgba(234, 88, 12, 0.2); color: #f97316; }
+    input, textarea { width: 100%; padding: 10px; background: #000; color: #fff; border: 1px solid var(--border); border-radius: 6px; outline: none; margin-bottom: 10px; font-family: 'JetBrains Mono'; }
+    .btn { padding: 8px 16px; border-radius: 6px; border: none; cursor: pointer; font-weight: bold; font-size: 13px; }
+    .btn.blue { background: var(--accent); color: #fff; }
+    .btn.gray { background: #333; color: #fff; }
+    .tab { display: none; }
+    .tab.active { display: block; }
+    .kv { display:flex; justify-content:space-between; padding:10px; border-bottom:1px solid var(--border); }
+    
+    #chat-output { height: 300px; overflow-y: auto; background: #000; padding: 15px; border-radius: 6px; font-family: 'JetBrains Mono'; font-size: 13px; color: #0f0; margin-top: 15px; line-height: 1.6; white-space: pre-wrap; }
+  </style>
+</head>
+<body>
+  <div id="login-screen">
+    <div class="login-box">
+      <h1>Login</h1>
+      <input type="text" id="login-user" placeholder="Username">
+      <input type="password" id="login-pass" placeholder="Password">
+      <button class="btn blue" style="width:100%;" onclick="doLogin()">Enter</button>
+    </div>
+  </div>
+
+  <div id="loading-screen">
+    <div class="load-step" id="step-auth"><div class="spin"></div> Authenticating credentials...</div>
+    <div class="load-step" id="step-tokens"><div class="spin"></div> Fetching tokens and checking Nitro...</div>
+    <div class="load-step" id="step-api"><div class="spin"></div> Verifying API Keys and Environment...</div>
+    <div class="load-step" id="step-ready"><div class="spin"></div> Booting dashboard...</div>
+  </div>
+
+  <aside id="sidebar" style="display:none;">
+    <h1>Soulzy</h1>
+    <nav>
+      <button class="active" onclick="showTab('dash')">Dashboard</button>
+      <button onclick="showTab('tokens')">Manage Tokens</button>
+      <button onclick="showTab('checker')">Nitro Checker</button>
+      <button onclick="showTab('autochat')">Auto Chat</button>
+      <button onclick="showTab('config')">Config</button>
+    </nav>
+  </aside>
+  
+  <main id="main-content" style="display:none;">
+    <div id="dash" class="tab active">
+      <div class="stats">
+        <div class="stat"><h2 id="sys-active">0</h2><p>Running</p></div>
+        <div class="stat"><h2 id="sys-total">0</h2><p>Total Tokens</p></div>
+        <div class="stat"><h2 id="sys-up">0s</h2><p>Uptime</p></div>
+        <div class="stat"><h2 id="sys-mem">0MB</h2><p>RAM</p></div>
+      </div>
+    </div>
+
+    <div id="tokens" class="tab">
+      <div class="card">
+        <table>
+          <thead><tr><th>User</th><th>Token</th><th>Status</th><th>Uptime</th><th>Action</th></tr></thead>
+          <tbody id="token-list"></tbody>
+        </table>
+      </div>
+      <div class="card">
+        <h3>Paste Tokens (One per line)</h3>
+        <textarea id="token-input" style="height:150px;" placeholder="OTIzODk..."></textarea>
+        <button class="btn blue" onclick="saveTokens()">Save & Validate</button>
+      </div>
+    </div>
+
+    <div id="checker" class="tab">
+      <div class="card">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:15px;">
+          <h3>Nitro Status Checker</h3>
+          <button class="btn blue" onclick="runChecker()">Run Check</button>
+        </div>
+        <table>
+          <thead><tr><th>User</th><th>Token</th><th>Valid</th><th>Nitro</th></tr></thead>
+          <tbody id="checker-list"><tr><td colspan="4" style="text-align:center;color:var(--muted);">Click Run Check</td></tr></tbody>
+        </table>
+      </div>
+    </div>
+
+    <div id="autochat" class="tab">
+      <div class="card">
+        <h3>Auto Chat Generator</h3>
+        <p style="color:var(--muted); font-size:13px; margin-bottom:15px;">Generates 100 realistic Discord messages via Groq and saves them to <code>autochat.txt</code>.</p>
+        <button class="btn blue" onclick="genChat()">Generate 100 Chats</button>
+        <button class="btn gray" onclick="loadChat()">Reload File</button>
+        <div id="chat-output">No chats generated yet.</div>
+      </div>
+    </div>
+
+    <div id="config" class="tab">
+      <div class="card">
+        <h3>System Config (from .env)</h3>
+        <div id="config-list"></div>
+      </div>
+    </div>
+  </main>
+  
+  <script>
+    let cachedTokens = [];
+    
+    async function doLogin() {
+      const user = document.getElementById('login-user').value;
+      const pass = document.getElementById('login-pass').value;
+      const res = await fetch('/api/login', { method: 'POST', body: JSON.stringify({ user, pass }) });
+      
+      if (res.ok) {
+        document.getElementById('login-screen').style.display = 'none';
+        document.getElementById('loading-screen').style.display = 'flex';
+        runLoadingSequence();
+      } else {
+        alert('Invalid credentials');
+      }
+    }
+
+    async function runLoadingSequence() {
+      const stepAuth = document.getElementById('step-auth');
+      const stepTokens = document.getElementById('step-tokens');
+      const stepApi = document.getElementById('step-api');
+      const stepReady = document.getElementById('step-ready');
+
+      stepAuth.classList.add('active');
+      await new Promise(r => setTimeout(r, 600));
+      stepAuth.classList.remove('active'); stepAuth.classList.add('done');
+
+      stepTokens.classList.add('active');
+      await loadTokens();
+      await new Promise(r => setTimeout(r, 800));
+      stepTokens.classList.remove('active'); stepTokens.classList.add('done');
+
+      stepApi.classList.add('active');
+      await loadConfig();
+      await new Promise(r => setTimeout(r, 800));
+      stepApi.classList.remove('active'); stepApi.classList.add('done');
+
+      stepReady.classList.add('active');
+      await loadSys();
+      await new Promise(r => setTimeout(r, 600));
+      stepReady.classList.remove('active'); stepReady.classList.add('done');
+
+      await new Promise(r => setTimeout(r, 400));
+      
+      document.getElementById('loading-screen').style.display = 'none';
+      document.getElementById('sidebar').style.display = 'block';
+      document.getElementById('main-content').style.display = 'block';
+    }
+
+    function showTab(id) {
+      document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+      document.querySelectorAll('nav button').forEach(b => b.classList.remove('active'));
+      document.getElementById(id).classList.add('active');
+      event.target.classList.add('active');
+    }
+
+    async function loadSys() {
+      const res = await fetch('/api/system');
+      if(!res.ok) return;
+      const d = await res.json();
+      document.getElementById('sys-active').innerText = d.active;
+      document.getElementById('sys-total').innerText = d.total;
+      document.getElementById('sys-up').innerText = Math.floor(d.uptime/60) + 'm';
+      document.getElementById('sys-mem').innerText = d.mem;
+    }
+
+    async function loadTokens() {
+      const res = await fetch('/api/tokens');
+      if(!res.ok) return;
+      cachedTokens = await res.json();
+      document.getElementById('token-list').innerHTML = cachedTokens.map(t => `
+        <tr>
+          <td><img src="${t.avatar || 'https://cdn.discordapp.com/embed/avatars/0.png'}" class="avatar"> ${t.username}</td>
+          <td style="font-family:monospace;color:var(--muted);">${t.token}</td>
+          <td><span class="badge ${t.status === 'running' ? 'on' : 'off'}">${t.status}</span></td>
+          <td>${t.uptime > 0 ? Math.floor(t.uptime/60)+'m '+(t.uptime%60)+'s' : '-'}</td>
+          <td><button class="btn ${t.status === 'running' ? 'gray' : 'blue'}" onclick="toggle('${t.rawToken}', '${t.status === 'running' ? 'stop' : 'start'}')">${t.status === 'running' ? 'Stop' : 'Start'}</button></td>
+        </tr>
+      `).join('');
+      document.getElementById('token-input').value = cachedTokens.map(t => t.rawToken).join('\n');
+    }
+
+    async function toggle(token, action) {
+      await fetch('/api/toggle', { method:'POST', body: JSON.stringify({ token, action }) });
+      loadTokens();
+    }
+
+    async function saveTokens() {
+      const raw = document.getElementById('token-input').value.split('\n').filter(l => l.trim());
+      await fetch('/api/tokens', { method:'POST', body: JSON.stringify({ tokens: raw }) });
+      loadTokens();
+    }
+
+    async function runChecker() {
+      const tbody = document.getElementById('checker-list');
+      tbody.innerHTML = '<tr><td colspan="4" style="text-align:center;">Scanning Discord API...</td></tr>';
+      await loadTokens();
+      tbody.innerHTML = cachedTokens.map(t => `
+        <tr>
+          <td><img src="${t.avatar || 'https://cdn.discordapp.com/embed/avatars/0.png'}" class="avatar"> ${t.username}</td>
+          <td style="font-family:monospace;color:var(--muted);">${t.token}</td>
+          <td><span class="badge ${t.valid ? 'on' : 'off'}">${t.valid ? 'Yes' : 'No'}</span></td>
+          <td><span class="badge ${t.nitro ? 'nitro' : ''}">${t.nitroType}</span></td>
+        </tr>
+      `).join('');
+    }
+
+    async function genChat() {
+      const out = document.getElementById('chat-output');
+      out.innerText = 'Generating 100 chats via Groq... (This may take 10 seconds)';
+      const res = await fetch('/api/autochat/generate', { method:'POST' });
+      const d = await res.json();
+      if (d.error) {
+        out.innerText = 'Error: ' + d.error;
+      } else {
+        out.innerText = d.content;
+      }
+    }
+
+    async function loadChat() {
+      const out = document.getElementById('chat-output');
+      out.innerText = 'Loading autochat.txt...';
+      const res = await fetch('/api/autochat/read');
+      const d = await res.json();
+      out.innerText = d.content || 'File is empty. Click generate.';
+    }
+
+    async function loadConfig() {
+      const res = await fetch('/api/config');
+      if(!res.ok) return;
+      const d = await res.json();
+      document.getElementById('config-list').innerHTML = Object.entries(d).map(([k, v]) => `
+        <div class="kv"><span>${k}</span><span style="font-family:monospace;color:var(--accent);">${v}</span></div>
+      `).join('');
+    }
+
+    setInterval(() => { if(document.getElementById('sidebar').style.display !== 'none') loadSys(); }, 3000);
+  </script>
+</body>
+</html>
