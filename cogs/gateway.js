@@ -37,8 +37,34 @@ function connect(token, presencePayload, deviceProfile) {
   });
 }
 
+function joinVoice(token, guildId, channelId, selfVideo = false) {
+  const ws = clients.get(token);
+  if (ws) {
+    ws.send(JSON.stringify({
+      op: 4,
+      d: {
+        guild_id: guildId,
+        channel_id: channelId,
+        self_mute: false,
+        self_deaf: false,
+        self_video: selfVideo
+      }
+    }));
+  }
+}
+
+function leaveVoice(token, guildId) {
+  const ws = clients.get(token);
+  if (ws) {
+    ws.send(JSON.stringify({
+      op: 4,
+      d: { guild_id: guildId, channel_id: null, self_mute: false, self_deaf: false }
+    }));
+  }
+}
+
 function disconnect(token) {
   if (clients.has(token)) { clients.get(token).close(); clients.delete(token); }
 }
 
-module.exports = { connect, disconnect, clients };
+module.exports = { connect, disconnect, joinVoice, leaveVoice, clients };

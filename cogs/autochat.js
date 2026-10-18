@@ -1,61 +1,68 @@
 const axios = require('axios');
 
-async function generate100Chats() {
-  const key = process.env.GROQ_API_KEY;
-  if (!key) throw new Error('GROQ_API_KEY missing in Variables');
-
+async function generateReply(groqKey) {
   try {
-    // 1. Ask Groq what models this specific API key can access
-    const modelsRes = await axios.get('https://api.groq.com/openai/v1/models', {
-      headers: { Authorization: `Bearer ${key}` }
-    });
-
-    // 2. Filter out models that don't support chat completions (like Whisper/TTS)
-    const availableModels = modelsRes.data.data
-      .filter(m => m.active && !m.id.includes('whisper') && !m.id.includes('tts'))
-      .map(m => m.id);
-
-    if (availableModels.length === 0) throw new Error('No chat models available for this API key.');
-
-    let lastError = null;
-
-    // 3. Try the available models until one works
-    for (const model of availableModels) {
+    const modelsRes = await axios.get('https://api.groq.com/openai/v1/models', { headers: { Authorization: `Bearer ${groqKey}` } });
+    const models = modelsRes.data.data.filter(m => m.active && !m.id.includes('whisper')).map(m => m.id);
+    
+    for (const model of models) {
       try {
         const res = await axios.post('https://api.groq.com/openai/v1/chat/completions', {
           model: model,
           messages: [{ 
             role: 'system', 
-            content: 'Return exactly 100 lines of realistic, casual, lowercase Discord chat. No numbering. Just text.' 
+            content: 'You are a real person on Discord. Output ONE short, casual, lowercase message replying to the chat. No punctuation at the end. Do not use names or prefixes.' 
+          }, {
+            role: 'user',
+            content: 'Just chatting with friends, say something normal.'
           }]
-        }, { headers: { Authorization: `Bearer ${key}` } });
-        
+        }, { headers: { Authorization: `Bearer ${groqKey}` } });
         return res.data.choices[0].message.content.trim();
-      } catch (err) {
-        lastError = err.response?.data?.error?.message || err.message;
-        continue; // If this model fails, try the next one
-      }
+      } catch (e) { continue; }
     }
+    return "yeah fr";
+  } catch (e) { return "lol true"; }
+}
+
+async function sendTyping(token, channelId) {
+  try { await axios.post(`https://discord.com/api/v10/channels/${channelId}/typing`, {}, { headers: { Authorization: token } }); } catch (e) {}
+}
+
+async function sendMessage(token, channelId, content) {
+  try { await axios.post(`https://discord.com/api/v10/channels/${channelId}/messages`, { content }, { headers: { Authorization: token } }); } catch (e) {}
+}
+
+let chatInterval = null;
+
+function startChatLoop(tokens, channelId, groqKey, log) {
+  if (chatInterval) clearInterval(chatInterval);
+  
+  chatInterval = setInterval(async () => {
+    if (!tokens.length) return;
+    const token = tokens[Math.floor(Math.random() * tokens.length)];
     
-    throw new Error(`All available models failed. Last error: ${lastError}`);
-  } catch (err) {
-    throw new Error(err.message);
-  }
+    // 1. Generate Message
+    const message = await generateReply(groqKey);
+    
+    // 2. Human delay before typing (2-5s)
+    await new Promise(r => setTimeout(r, Math.floor(Math.random() * 3000) + 2000));
+    
+    // 3. Trigger Typing Indicator
+    await sendTyping(token, channelId);
+    
+    // 4. Type based on message length (e.g. 50ms per char)
+    await new Promise(r => setTimeout(r, message.length * 50));
+    
+    // 5. Send Message
+    await sendMessage(token, channelId, message);
+    log(`Sent: ${message}`);
+    
+  }, Math.floor(Math.random() * 30000) + 15000); // 15s to 45s between messages
 }
 
-async function sendMessages(tokens, channelId, messages, delayMs) {
-  for (let i = 0; i < tokens.length; i++) {
-    const token = tokens[i];
-    const msg = messages[Math.floor(Math.random() * messages.length)];
-    try {
-      await axios.post(`https://discord.com/api/v10/channels/${channelId}/messages`, 
-        { content: msg }, 
-        { headers: { Authorization: token } }
-      );
-    } catch (e) {}
-    await new Promise(r => setTimeout(r, delayMs));
-  }
-  return { ok: true };
+function stopChatLoop() {
+  if (chatInterval) clearInterval(chatInterval);
+  chatInterval = null;
 }
 
-module.exports = { generate100Chats, sendMessages };
+module.exports = { startChatLoop, stopChatLoop };
