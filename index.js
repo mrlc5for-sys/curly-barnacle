@@ -12,6 +12,7 @@ const CONFIG_FILE = path.join(DATA_DIR, 'config.json');
 const gateway = require('./cogs/gateway');
 const autochatCog = require('./cogs/autochat');
 const reactionsCog = require('./cogs/reactions');
+const questsCog = require('./cogs/quests');
 const spoofer = require('./cogs/deviceSpoofer');
 
 if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
@@ -145,6 +146,12 @@ const server = http.createServer(async (req, res) => {
     return send(200, { ok: true });
   }
 
+  if (url.pathname === '/api/quests/start' && req.method === 'POST') {
+    const logs = [];
+    questsCog.startQuests(readTokens(), (msg) => logs.push(msg));
+    return send(200, { ok: true, logs });
+  }
+
   if (url.pathname === '/api/vc/join' && req.method === 'POST') {
     const config = readConfig();
     if (!config.vcGuildId || !config.vcChannelId) return send(400, { error: 'Set VC IDs' });
@@ -223,6 +230,7 @@ td{padding:14px;border-bottom:1px solid rgba(255,255,255,0.05);font-size:14px;}
 .badge.off{background:rgba(239,68,68,0.15);color:var(--bad);}
 .btn-blue{padding:10px 20px;border-radius:8px;border:none;cursor:pointer;font-weight:600;font-size:14px;background:var(--accent);color:#fff;transition:all 0.2s}
 .btn-gray{padding:10px 20px;border-radius:8px;border:1px solid var(--border);cursor:pointer;font-weight:600;font-size:14px;background:transparent;color:var(--text);transition:all 0.2s}
+pre{background:rgba(0,0,0,0.3);padding:16px;border-radius:12px;border:1px solid var(--border);font-family:'JetBrains Mono',monospace;font-size:13px;color:var(--ok);white-space:pre-wrap;overflow-y:auto;max-height:300px;}
 </style></head>
 <body>
 <div id="bg"><div class="orb orb-1"></div><div class="orb orb-2"></div></div>
@@ -252,6 +260,7 @@ td{padding:14px;border-bottom:1px solid rgba(255,255,255,0.05);font-size:14px;}
     <button class="nav-btn" onclick="showTab('autochat', this)"><svg viewBox="0 0 24 24"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>Auto Chat</button>
     <button class="nav-btn" onclick="showTab('autoreact', this)"><svg viewBox="0 0 24 24"><path d="M11.99 2C6.47 2 2 6.48 2 12s4.47 10 9.99 10C17.52 22 22 17.52 22 12S17.52 2 11.99 2zM12 20c-4.42 0-8-3.58-8-8s3.58-8 8-8 8 3.58 8 8-3.58 8-8 8zm3.5-9c.83 0 1.5-.67 1.5-1.5S16.33 8 15.5 8 14 8.67 14 9.5s.67 1.5 1.5 1.5zm-7 0c.83 0 1.5-.67 1.5-1.5S9.33 8 8.5 8 7 8.67 7 9.5 7.67 11 8.5 11zm3.5 6.5c2.33 0 4.31-1.46 5.11-3.5H6.89c.8 2.04 2.78 3.5 5.11 3.5z"/></svg>Auto React</button>
     <button class="nav-btn" onclick="showTab('vc', this)"><svg viewBox="0 0 24 24"><path d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3z"/><path d="M17 11c0 2.76-2.24 5-5 5s-5-2.24-5-5H5c0 3.53 2.61 6.43 6 6.92V21h2v-3.08c3.39-.49 6-3.39 6-6.92h-2z"/></svg>VC Joiner</button>
+    <button class="nav-btn" onclick="showTab('quests', this)"><svg viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/></svg>Auto Quest</button>
     <div class="sec-label">Setup</div>
     <button class="nav-btn" onclick="showTab('multistatus', this)"><svg viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8z"/><circle cx="12" cy="12" r="4"/></svg>Status Cards</button>
     <button class="nav-btn" onclick="showTab('multirpc', this)"><svg viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8z"/><path d="M11 7h2v5.41l3.29 3.3-1.41 1.41L11 13.17z"/></svg>RPC Cards</button>
@@ -320,6 +329,15 @@ td{padding:14px;border-bottom:1px solid rgba(255,255,255,0.05);font-size:14px;}
           <button class="btn-blue" onclick="joinVc()">Join All</button>
           <button class="btn-gray" onclick="leaveVc()">Leave All</button>
         </div>
+      </div>
+    </section>
+
+    <section class="tab-panel" id="tab-quests">
+      <div class="page-head"><h1 class="page-title">Auto Quest & Hypersquad</h1><p class="page-desc">Complete quests to earn the Hypersquad Badge</p></div>
+      <div class="card">
+        <p style="color:var(--text-2);font-size:13px;margin-bottom:16px;">This will spoof video watch time and game heartbeats for all active quests, then claim rewards. Completing 7+ quests grants the Hypersquad badge.</p>
+        <button class="btn-blue" onclick="startQuests()">Start Questing</button>
+        <pre id="quest-output" style="margin-top:16px;">Ready.</pre>
       </div>
     </section>
 
@@ -427,6 +445,13 @@ async function startReact() {
 async function stopReact() {
   await fetch('/api/react/stop', { method:'POST' });
   document.getElementById('react-status').innerText = 'Stopped.';
+}
+async function startQuests() {
+  const out = document.getElementById('quest-output');
+  out.innerText = 'Starting quests... This may take a while.';
+  const res = await fetch('/api/quests/start', { method:'POST' });
+  const d = await res.json();
+  out.innerText = d.logs ? d.logs.join('\\n') : 'Done.';
 }
 async function joinVc() {
   currentConfig.vcGuildId = document.getElementById('vc-guild').value;
