@@ -19,10 +19,9 @@ if (!fs.existsSync(TOKENS_FILE)) fs.writeFileSync(TOKENS_FILE, '');
 if (!fs.existsSync(AUTOCHAT_FILE)) fs.writeFileSync(AUTOCHAT_FILE, '');
 
 const defaultConfig = {
-  statuses: ['online', 'idle', 'dnd'],
+  status: { state: 'online', text: '', emoji: '' },
   rpcs: [
-    { name: 'Visual Studio Code', details: 'Editing index.js', state: 'Workspace: soulzy' },
-    { name: 'Spotify', details: 'Listening to lofi beats', state: '24/7 Chill' }
+    { name: 'Visual Studio Code', type: 0, details: 'Editing index.js', state: 'Workspace: soulzy' }
   ],
   spooferMode: 'desktop',
   guildId: '', channelId: '', chatDelay: 5000
@@ -104,12 +103,24 @@ const server = http.createServer(async (req, res) => {
       const { token, action } = JSON.parse(body);
       const config = readConfig();
       if (action === 'start') {
-        const randomStatus = config.statuses[Math.floor(Math.random() * config.statuses.length)] || 'online';
-        const randomRpc = config.rpcs[Math.floor(Math.random() * config.rpcs.length)] || null;
         const activities = [];
-        if (randomRpc) activities.push({ name: randomRpc.name, type: 0, details: randomRpc.details, state: randomRpc.state });
+        
+        // Custom Status
+        if (config.status && config.status.text) {
+          const custom = { name: 'Custom Status', type: 4, state: config.status.text };
+          if (config.status.emoji) custom.emoji = { name: config.status.emoji };
+          activities.push(custom);
+        }
+        
+        // RPC Pool (Pick random)
+        if (config.rpcs && config.rpcs.length) {
+          const rpc = config.rpcs[Math.floor(Math.random() * config.rpcs.length)];
+          activities.push({ name: rpc.name, type: Number(rpc.type) || 0, details: rpc.details, state: rpc.state });
+        }
+
+        const finalStatus = config.status?.state || 'online';
         const profile = spoofer.generateProfile(config.spooferMode || 'desktop');
-        await gateway.connect(token, { status: randomStatus, activities }, profile);
+        await gateway.connect(token, { status: finalStatus, activities }, profile);
       } else if (action === 'stop') {
         gateway.disconnect(token);
       }
@@ -136,7 +147,14 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
-  if (url.pathname === '/api/config' && req.method === 'GET') return send(200, readConfig());
+  if (url.pathname === '/api/config' && req.method === 'GET') {
+    const mask = (str) => str ? str.substring(0, 6) + '...' + str.slice(-4) : 'Not Set';
+    return send(200, {
+      env: { GROQ_API_KEY: mask(process.env.GROQ_API_KEY), DATA_DIR: process.env.DATA_DIR || 'Local' },
+      config: readConfig()
+    });
+  }
+  
   if (url.pathname === '/api/config' && req.method === 'POST') {
     let body = ''; req.on('data', c => body += c);
     req.on('end', () => { saveConfig(JSON.parse(body)); send(200, { ok: true }); });
@@ -233,6 +251,8 @@ pre{background:rgba(0,0,0,0.3);padding:16px;border-radius:12px;border:1px solid 
     <div class="sec-label">Setup</div>
     <button class="nav-btn" onclick="showTab('multistatus', this)"><svg viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8z"/><circle cx="12" cy="12" r="4"/></svg>Multi Status</button>
     <button class="nav-btn" onclick="showTab('multirpc', this)"><svg viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8z"/><path d="M11 7h2v5.41l3.29 3.3-1.41 1.41L11 13.17z"/></svg>Multi RPC</button>
+    <div class="sec-label">System</div>
+    <button class="nav-btn" onclick="showTab('config', this)"><svg viewBox="0 0 24 24"><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>Config</button>
   </aside>
 
   <main>
@@ -271,7 +291,10 @@ pre{background:rgba(0,0,0,0.3);padding:16px;border-radius:12px;border:1px solid 
     <section class="tab-panel" id="tab-autochat">
       <div class="page-head"><h1 class="page-title">Auto Chat Runner</h1><p class="page-desc">Send generated lines to a channel</p></div>
       <div class="card">
+        <div class="card-title">Target Server</div>
+        <input type="text" id="chat-guild" placeholder="Guild ID (Optional)">
         <input type="text" id="chat-channel" placeholder="Channel ID">
+        <div class="card-title" style="margin-top:16px;">Delay Settings</div>
         <input type="number" id="chat-delay" placeholder="Delay (ms)" value="5000">
         <button class="btn-blue" onclick="startChat()">Start Sending</button>
         <p id="chat-status" style="margin-top:16px;color:var(--ok);"></p>
@@ -288,8 +311,15 @@ pre{background:rgba(0,0,0,0.3);padding:16px;border-radius:12px;border:1px solid 
           <option value="console">Console (PlayStation 5)</option>
           <option value="vr">VR (Oculus Quest 3)</option>
         </select>
-        <label style="display:block;margin-bottom:8px;color:var(--text-2);">Status Pool (comma separated)</label>
-        <input type="text" id="statuses-input" placeholder="online, idle, dnd, invisible">
+        <label style="display:block;margin-bottom:8px;color:var(--text-2);">Status State</label>
+        <select id="status-state" style="margin-bottom:16px;">
+          <option value="online">Online</option>
+          <option value="idle">Idle</option>
+          <option value="dnd">Do Not Disturb</option>
+          <option value="invisible">Invisible</option>
+        </select>
+        <label style="display:block;margin-bottom:8px;color:var(--text-2);">Custom Status Text (Supports Emojis)</label>
+        <input type="text" id="status-text" placeholder="Example: 🎮 Playing games">
         <button class="btn-blue" onclick="saveConfigMulti()">Save Settings</button>
       </div>
     </section>
@@ -297,15 +327,36 @@ pre{background:rgba(0,0,0,0.3);padding:16px;border-radius:12px;border:1px solid 
     <section class="tab-panel" id="tab-multirpc">
       <div class="page-head"><h1 class="page-title">Multi RPC</h1><p class="page-desc">Randomize RPCs across tokens</p></div>
       <div class="card">
-        <textarea id="rpcs-input" placeholder='[{"name":"Spotify","details":"Chill","state":"Vibing"}]' style="height:150px;"></textarea>
-        <button class="btn-blue" onclick="saveRpcs()">Save RPC Cards</button>
+        <div class="card-title">Add RPC Card</div>
+        <input type="text" id="rpc-name" placeholder="App Name (e.g. Spotify)">
+        <select id="rpc-type" style="margin-bottom:16px;">
+          <option value="0">Playing</option>
+          <option value="1">Streaming</option>
+          <option value="2">Listening</option>
+          <option value="3">Watching</option>
+          <option value="5">Competing</option>
+        </select>
+        <input type="text" id="rpc-details" placeholder="Details (e.g. Listening to lofi)">
+        <input type="text" id="rpc-state" placeholder="State (e.g. 24/7 Chill)">
+        <button class="btn-blue" onclick="addRpcCard()">Add to Pool</button>
+        
+        <div class="card-title" style="margin-top:24px;">Current RPC Pool</div>
+        <div id="rpc-list" style="margin-bottom:16px;"></div>
+        <button class="btn-blue" onclick="saveRpcs()">Save RPC Pool</button>
       </div>
+    </section>
+
+    <section class="tab-panel" id="tab-config">
+      <div class="page-head"><h1 class="page-title">Config</h1><p class="page-desc">Environment & System Variables</p></div>
+      <div class="card"><div id="config-list"></div></div>
     </section>
   </main>
 </div>
 
 <script>
 let cachedTokens = [];
+let localRpcs = [];
+
 async function doLogin() {
   const res = await fetch('/api/login', { method: 'POST', body: JSON.stringify({ user: document.getElementById('login-user').value, pass: document.getElementById('login-pass').value }) });
   if (res.ok) {
@@ -350,33 +401,66 @@ async function genChat() {
   out.innerText = d.error ? 'Error: ' + d.error : d.content;
 }
 async function startChat() {
+  const guildId = document.getElementById('chat-guild').value;
   const channelId = document.getElementById('chat-channel').value;
   const delay = document.getElementById('chat-delay').value;
   document.getElementById('chat-status').innerText = 'Sending messages...';
-  await fetch('/api/autochat/send', { method:'POST', body: JSON.stringify({ channelId, delay }) });
+  await fetch('/api/autochat/send', { method:'POST', body: JSON.stringify({ guildId, channelId, delay }) });
   document.getElementById('chat-status').innerText = 'Done sending.';
 }
 async function saveConfigMulti() {
-  const s = document.getElementById('statuses-input').value.split(',').map(x => x.trim());
   const spoof = document.getElementById('spoofer-select').value;
+  const state = document.getElementById('status-state').value;
+  const text = document.getElementById('status-text').value;
   const currentConfig = await (await fetch('/api/config')).json();
-  await fetch('/api/config', { method:'POST', body: JSON.stringify({ ...currentConfig, statuses: s, spooferMode: spoof }) });
-  alert('Statuses & Device Spoofer saved');
+  currentConfig.config.spooferMode = spoof;
+  currentConfig.config.status = { state, text };
+  await fetch('/api/config', { method:'POST', body: JSON.stringify(currentConfig.config) });
+  alert('Status & Device Spoofer saved');
+}
+
+function renderRpcs() {
+  document.getElementById('rpc-list').innerHTML = localRpcs.map((r, i) => \`
+    <div style="background:rgba(0,0,0,0.3);padding:10px;border-radius:8px;margin-bottom:8px;display:flex;justify-content:space-between;">
+      <span><b>\${r.name}</b>: \${r.details}</span>
+      <button class="btn-gray" style="padding:4px 8px;font-size:12px;" onclick="localRpcs.splice(\${i},1);renderRpcs();">X</button>
+    </div>
+  \`).join('');
+}
+function addRpcCard() {
+  const name = document.getElementById('rpc-name').value;
+  const type = document.getElementById('rpc-type').value;
+  const details = document.getElementById('rpc-details').value;
+  const state = document.getElementById('rpc-state').value;
+  if(!name) return alert('Name required');
+  localRpcs.push({ name, type: Number(type), details, state });
+  renderRpcs();
+  document.getElementById('rpc-name').value = '';
+  document.getElementById('rpc-details').value = '';
+  document.getElementById('rpc-state').value = '';
 }
 async function saveRpcs() {
-  try {
-    const r = JSON.parse(document.getElementById('rpcs-input').value);
-    const currentConfig = await (await fetch('/api/config')).json();
-    await fetch('/api/config', { method:'POST', body: JSON.stringify({ ...currentConfig, rpcs: r }) });
-    alert('RPCs saved');
-  } catch(e) { alert('Invalid JSON format'); }
+  const currentConfig = await (await fetch('/api/config')).json();
+  currentConfig.config.rpcs = localRpcs;
+  await fetch('/api/config', { method:'POST', body: JSON.stringify(currentConfig.config) });
+  alert('RPC Pool saved');
 }
 async function loadConfig() {
   const res = await fetch('/api/config'); if(!res.ok) return;
   const d = await res.json();
-  document.getElementById('statuses-input').value = (d.statuses || []).join(', ');
-  document.getElementById('spoofer-select').value = d.spooferMode || 'desktop';
-  document.getElementById('rpcs-input').value = JSON.stringify(d.rpcs || [], null, 2);
+  document.getElementById('spoofer-select').value = d.config.spooferMode || 'desktop';
+  if(d.config.status) {
+    document.getElementById('status-state').value = d.config.status.state || 'online';
+    document.getElementById('status-text').value = d.config.status.text || '';
+  }
+  localRpcs = d.config.rpcs || [];
+  renderRpcs();
+  
+  // Fill Config Tab
+  document.getElementById('config-list').innerHTML = Object.entries(d.env).map(([k, v]) => \`<div class="kv"><span>\${k}</span><span style="color:var(--accent);font-family:monospace;">\${v}</span></div>\`).join('');
+  document.getElementById('chat-guild').value = d.config.guildId || '';
+  document.getElementById('chat-channel').value = d.config.channelId || '';
+  document.getElementById('chat-delay').value = d.config.chatDelay || 5000;
 }
 setInterval(() => { if(document.getElementById('main-layout').style.display !== 'none') loadSys(); }, 3000);
 </script>
